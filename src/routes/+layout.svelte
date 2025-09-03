@@ -5,6 +5,6 @@
 
 <svelte:head></svelte:head>
 
-<nav>Home</nav>
+<!-- <nav>Home</nav> -->
 
 {@render children?.()}
