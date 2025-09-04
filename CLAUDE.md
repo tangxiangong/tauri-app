@@ -1,10 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
 ## Project Architecture
 
 This is a Tauri desktop application using:
+
 - **Frontend**: SvelteKit 5 with TypeScript, TailwindCSS v4, and DaisyUI
 - **Backend**: Rust with Tauri 2.x framework
 - **Build System**: Vite for frontend bundling, Cargo for Rust compilation
@@ -12,34 +14,41 @@ This is a Tauri desktop application using:
 
 ### Key Architecture Points
 
-- **SPA Mode**: Uses `@sveltejs/adapter-static` with fallback to `index.html` since Tauri doesn't support SSR
-- **Tauri Commands**: Rust functions exposed to frontend via `#[tauri::command]` macro (see `src-tauri/src/lib.rs`)
-- **Frontend-Backend Communication**: TypeScript wrappers in `src/lib/command/` call Rust functions via `@tauri-apps/api/core.invoke()`
+- **SPA Mode**: Uses `@sveltejs/adapter-static` with fallback to `index.html`
+  since Tauri doesn't support SSR
+- **Tauri Commands**: Rust functions exposed to frontend via `#[tauri::command]`
+  macro (see `src-tauri/src/lib.rs`)
+- **Frontend-Backend Communication**: TypeScript wrappers in `src/lib/command/`
+  call Rust functions via `@tauri-apps/api/core.invoke()`
 - **State Management**: Svelte 5 runes (`$state`) for reactive state
 - **Styling**: TailwindCSS v4 with DaisyUI component library
 
 ## Development Commands
 
 ### Frontend Development
+
 ```bash
 npm run dev          # Start Vite dev server (frontend only)
 npm run build        # Build frontend for production
 npm run preview      # Preview production build
 ```
 
-### Type Checking & Linting  
+### Type Checking & Linting
+
 ```bash
 npm run check        # Run svelte-check with TypeScript
 npm run check:watch  # Run svelte-check in watch mode
 ```
 
 ### Tauri Development
+
 ```bash
 npm run tauri dev    # Start Tauri app in development mode
 npm run tauri build  # Build Tauri app for production
 ```
 
 ### Alternative Task Runner (Deno)
+
 ```bash
 just dev            # Equivalent to deno task tauri dev (uses Justfile)
 ```
