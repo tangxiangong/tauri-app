@@ -41,14 +41,14 @@ export type DifficultyType =
   | "孤儿及事实无人抚养儿童"
   | "低收入人口";
 
-export interface DifficultStudent {
+export interface DifficultPerson {
   id_number: string;
   difficulty_type: DifficultyType;
 }
 
 export interface MatchResult {
   student: Student;
-  difficult_info: DifficultStudent;
+  difficult_info: DifficultPerson;
 }
 
 /**
@@ -97,7 +97,7 @@ export async function openFileDialog(
     });
 
     return Array.isArray(selected) ? selected[0] : selected;
-  } catch (error) {
+  } catch (_) {
     return null;
   }
 }
@@ -127,7 +127,7 @@ export async function saveFileDialog(
     });
 
     return selected;
-  } catch (error) {
+  } catch (_) {
     return null;
   }
 }

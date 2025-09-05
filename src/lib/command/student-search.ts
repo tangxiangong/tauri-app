@@ -1,11 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  CommandResult,
-  DifficultStudent,
-  DifficultyType,
-  MatchResult,
-  Student,
-} from "./upload";
+import type { CommandResult, DifficultyType, MatchResult } from "./upload.ts";
 
 /**
  * 匹配结果统计信息
@@ -134,95 +128,6 @@ export async function executeStudentSearch(
       error: `执行查找时发生错误: ${error}`,
     };
   }
-}
-
-/**
- * 按困难类型分组匹配结果
- * @param matches 匹配结果数组
- * @returns 按困难类型分组的结果
- */
-export function groupMatchesByDifficultyType(
-  matches: MatchResult[],
-): Record<DifficultyType, MatchResult[]> {
-  const grouped: Record<string, MatchResult[]> = {};
-
-  matches.forEach((match) => {
-    const type = match.difficult_info.difficulty_type;
-    if (!grouped[type]) {
-      grouped[type] = [];
-    }
-    grouped[type].push(match);
-  });
-
-  return grouped as Record<DifficultyType, MatchResult[]>;
-}
-
-/**
- * 按学校分组匹配结果
- * @param matches 匹配结果数组
- * @returns 按学校分组的结果
- */
-export function groupMatchesBySchool(
-  matches: MatchResult[],
-): Record<string, MatchResult[]> {
-  const grouped: Record<string, MatchResult[]> = {};
-
-  matches.forEach((match) => {
-    const school = match.student.school || "未知学校";
-    if (!grouped[school]) {
-      grouped[school] = [];
-    }
-    grouped[school].push(match);
-  });
-
-  return grouped;
-}
-
-/**
- * 按年级分组匹配结果
- * @param matches 匹配结果数组
- * @returns 按年级分组的结果
- */
-export function groupMatchesByGrade(
-  matches: MatchResult[],
-): Record<string, MatchResult[]> {
-  const grouped: Record<string, MatchResult[]> = {};
-
-  matches.forEach((match) => {
-    const grade = match.student.grade || "未知年级";
-    if (!grouped[grade]) {
-      grouped[grade] = [];
-    }
-    grouped[grade].push(match);
-  });
-
-  return grouped;
-}
-
-/**
- * 搜索匹配结果中的特定学生
- * @param matches 匹配结果数组
- * @param searchTerm 搜索关键词（可以是姓名或身份证号的一部分）
- * @returns 匹配的结果
- */
-export function searchInMatches(
-  matches: MatchResult[],
-  searchTerm: string,
-): MatchResult[] {
-  if (!searchTerm.trim()) {
-    return matches;
-  }
-
-  const term = searchTerm.toLowerCase().trim();
-  return matches.filter((match) => {
-    return (
-      match.student.name.toLowerCase().includes(term) ||
-      match.student.id_number.includes(term) ||
-      (match.student.student_id &&
-        match.student.student_id.toLowerCase().includes(term)) ||
-      (match.student.class && match.student.class.toLowerCase().includes(term))
-    );
-  });
 }
 
 /**

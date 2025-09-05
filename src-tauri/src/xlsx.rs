@@ -1,4 +1,4 @@
-use calamine::{DataType, Reader, Xls, Xlsx, open_workbook};
+use calamine::{DataType, Reader, Xls, XlsError, Xlsx, XlsxError, open_workbook};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 
@@ -88,9 +88,9 @@ pub struct Student {
     pub school: Option<String>,     // 学校
 }
 
-/// 困难学生信息结构
+/// 困难人员信息结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DifficultStudent {
+pub struct DifficultPerson {
     pub id_number: String,               // 身份证号
     pub difficulty_type: DifficultyType, // 困难类型
 }
@@ -99,28 +99,19 @@ pub struct DifficultStudent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatchResult {
     pub student: Student,
-    pub difficult_info: DifficultStudent,
+    pub difficult_info: DifficultPerson,
 }
 
 /// Excel读取错误类型
-#[derive(Debug)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ExcelError {
+    #[error("File not found: {0}")]
     FileNotFound(String),
+    #[error("Read error: {0}")]
     ReadError(String),
+    #[error("Parse error: {0}")]
     ParseError(String),
 }
-
-impl std::fmt::Display for ExcelError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            ExcelError::FileNotFound(path) => write!(f, "File not found: {}", path),
-            ExcelError::ReadError(msg) => write!(f, "Read error: {}", msg),
-            ExcelError::ParseError(msg) => write!(f, "Parse error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for ExcelError {}
 
 /// 清理和标准化身份证号
 fn normalize_id_number(id: &str) -> String {
@@ -133,18 +124,20 @@ fn normalize_id_number(id: &str) -> String {
 }
 
 /// 读取学生信息表
-pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::error::Error>> {
+pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
     if !Path::new(file_path).exists() {
-        return Err(Box::new(ExcelError::FileNotFound(file_path.to_string())));
+        return Err(ExcelError::FileNotFound(file_path.to_string()));
     }
 
     let mut students = Vec::new();
 
     if file_path.ends_with(".xlsx") {
-        let mut workbook: Xlsx<_> = open_workbook(file_path)?;
+        let mut workbook: Xlsx<_> = open_workbook(file_path)
+            .map_err(|e: XlsxError| ExcelError::ReadError(e.to_string()))?;
         let range = workbook
             .worksheet_range_at(0)
-            .ok_or("Cannot find first worksheet")??;
+            .ok_or(ExcelError::ReadError("NO DATA".into()))?
+            .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
         for (row_idx, row) in range.rows().enumerate() {
             if row_idx == 0 {
@@ -206,16 +199,20 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::e
 fn read_common(
     file_path: &str,
     difficulty_type: DifficultyType,
-) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
-    let mut difficult_students = Vec::new();
+) -> Result<Vec<DifficultPerson>, ExcelError> {
+    let mut difficult_people = Vec::new();
 
     // 根据困难类型确定列位置
     let (id_col, data_start_row) = difficulty_type.get_column_config();
 
-    let mut workbook: Xlsx<_> = open_workbook(file_path)?;
+    let mut workbook: Xlsx<_> =
+        open_workbook(file_path).map_err(|e: XlsxError| ExcelError::ReadError(e.to_string()))?;
     let range = workbook
         .worksheet_range_at(0)
-        .ok_or("Cannot find worksheet at index 0".to_string())??;
+        .ok_or(ExcelError::ReadError(
+            "Cannot find worksheet at index 0".to_string(),
+        ))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
     for row in range.rows().skip(data_start_row) {
         let id_number = row
@@ -227,24 +224,26 @@ fn read_common(
 
         // 只要身份证号不为空就添加记录
         if !id_number.is_empty() {
-            let difficult_student = DifficultStudent {
+            let difficult_person = DifficultPerson {
                 id_number: normalize_id_number(&id_number),
                 difficulty_type,
             };
-            difficult_students.push(difficult_student);
+            difficult_people.push(difficult_person);
         }
     }
-    Ok(difficult_students)
+    Ok(difficult_people)
 }
 
 /// 孤儿
-fn read_orphans(file_path: &str) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
-    let mut difficult_students = Vec::new();
+fn read_orphans(file_path: &str) -> Result<Vec<DifficultPerson>, ExcelError> {
+    let mut difficult_people = Vec::new();
 
-    let mut workbook: Xls<_> = open_workbook(file_path)?;
+    let mut workbook: Xls<_> =
+        open_workbook(file_path).map_err(|e: XlsError| ExcelError::ReadError(e.to_string()))?;
     let range = workbook
         .worksheet_range_at(0)
-        .ok_or("Cannot find worksheet at index 0".to_string())??;
+        .ok_or(ExcelError::ReadError("NO DATA".to_string()))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
     for row in range.rows().skip(3) {
         let id_number = row
@@ -256,16 +255,17 @@ fn read_orphans(file_path: &str) -> Result<Vec<DifficultStudent>, Box<dyn std::e
 
         // 只要身份证号不为空就添加记录
         if !id_number.is_empty() {
-            let difficult_student = DifficultStudent {
+            let difficult_person = DifficultPerson {
                 id_number: normalize_id_number(&id_number),
                 difficulty_type: DifficultyType::OrphansAndFactuallyUnsupportedChildren,
             };
-            difficult_students.push(difficult_student);
+            difficult_people.push(difficult_person);
         }
     }
     let range = workbook
         .worksheet_range_at(2)
-        .ok_or("Cannot find worksheet at index 0".to_string())??;
+        .ok_or(ExcelError::ReadError("NO DATA".to_string()))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
     for row in range.rows().skip(3) {
         let id_number = row
@@ -277,27 +277,28 @@ fn read_orphans(file_path: &str) -> Result<Vec<DifficultStudent>, Box<dyn std::e
 
         // 只要身份证号不为空就添加记录
         if !id_number.is_empty() {
-            let difficult_student = DifficultStudent {
+            let difficult_person = DifficultPerson {
                 id_number: normalize_id_number(&id_number),
                 difficulty_type: DifficultyType::OrphansAndFactuallyUnsupportedChildren,
             };
-            difficult_students.push(difficult_student);
+            difficult_people.push(difficult_person);
         }
     }
-    Ok(difficult_students)
+    Ok(difficult_people)
 }
 
 /// 农村低保
-fn read_rural_minimum_living(
-    file_path: &str,
-) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
-    let mut difficult_students = Vec::new();
+fn read_rural_minimum_living(file_path: &str) -> Result<Vec<DifficultPerson>, ExcelError> {
+    let mut difficult_people = Vec::new();
     let difficulty_type = DifficultyType::RuralMinimumLiving;
 
     let mut workbook: Xls<_> = open_workbook(file_path).unwrap();
     let range = workbook
         .worksheet_range_at(1)
-        .ok_or("Cannot find worksheet at index 0".to_string())??;
+        .ok_or(ExcelError::ReadError(
+            "Cannot find worksheet at index 0".to_string(),
+        ))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
     let id_columns = [6, 15, 17, 19, 21, 23, 25, 27, 29];
     for row in range.rows().skip(2) {
         for col in id_columns {
@@ -310,28 +311,29 @@ fn read_rural_minimum_living(
 
             if !id_number.is_empty() {
                 let normalized_id = normalize_id_number(&id_number);
-                let difficult_student = DifficultStudent {
+                let difficult_person = DifficultPerson {
                     id_number: normalized_id,
                     difficulty_type,
                 };
-                difficult_students.push(difficult_student);
+                difficult_people.push(difficult_person);
             }
         }
     }
-    Ok(difficult_students)
+    Ok(difficult_people)
 }
 
 /// 城镇低保
-fn read_urban_minimum_living(
-    file_path: &str,
-) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
-    let mut difficult_students = Vec::new();
+fn read_urban_minimum_living(file_path: &str) -> Result<Vec<DifficultPerson>, ExcelError> {
+    let mut difficult_people = Vec::new();
     let difficulty_type = DifficultyType::UrbanMinimumLiving;
 
     let mut workbook: Xls<_> = open_workbook(file_path).unwrap();
     let range = workbook
         .worksheet_range_at(1)
-        .ok_or("Cannot find worksheet at index 0".to_string())??;
+        .ok_or(ExcelError::ReadError(
+            "Cannot find worksheet at index 0".to_string(),
+        ))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
     let id_columns = [6, 16, 18, 20, 22, 24];
     for row in range.rows().skip(2) {
         for col in id_columns {
@@ -343,28 +345,29 @@ fn read_urban_minimum_living(
                 .to_string();
 
             if !id_number.is_empty() {
-                let normalized_id = normalize_id_number(&id_number);
-                let difficult_student = DifficultStudent {
-                    id_number: normalized_id,
+                let difficult_person = DifficultPerson {
+                    id_number: normalize_id_number(&id_number),
                     difficulty_type,
                 };
-                difficult_students.push(difficult_student);
+                difficult_people.push(difficult_person);
             }
         }
     }
-    Ok(difficult_students)
+    Ok(difficult_people)
 }
 
 /// 城乡特困
-fn read_rural_special_difficulty(
-    file_path: &str,
-) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
-    let mut difficult_students = Vec::new();
+fn read_rural_special_difficulty(file_path: &str) -> Result<Vec<DifficultPerson>, ExcelError> {
+    let mut difficult_people = Vec::new();
 
-    let mut workbook: Xlsx<_> = open_workbook(file_path)?;
+    let mut workbook: Xlsx<_> =
+        open_workbook(file_path).map_err(|e: XlsxError| ExcelError::ReadError(e.to_string()))?;
     let range = workbook
         .worksheet_range_at(1)
-        .ok_or("Cannot find worksheet at index 1".to_string())??;
+        .ok_or(ExcelError::ReadError(
+            "Cannot find worksheet at index 1".to_string(),
+        ))?
+        .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
     let id_columns = [5, 26, 31, 33, 35, 37, 39, 41];
     for row in range.rows().skip(3) {
@@ -377,24 +380,24 @@ fn read_rural_special_difficulty(
                 .to_string();
 
             if !id_number.is_empty() {
-                let difficult_student = DifficultStudent {
+                let difficult_person = DifficultPerson {
                     id_number: normalize_id_number(&id_number),
                     difficulty_type: DifficultyType::RuralSpecialDifficulty,
                 };
-                difficult_students.push(difficult_student);
+                difficult_people.push(difficult_person);
             }
         }
     }
-    Ok(difficult_students)
+    Ok(difficult_people)
 }
 
 /// 读取困难类型表
 pub fn read_difficult_type_table(
     file_path: &str,
     difficulty_type: DifficultyType,
-) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
+) -> Result<Vec<DifficultPerson>, ExcelError> {
     if !Path::new(file_path).exists() {
-        return Err(Box::new(ExcelError::FileNotFound(file_path.to_string())));
+        return Err(ExcelError::FileNotFound(file_path.to_string()));
     }
 
     match difficulty_type {
@@ -409,7 +412,7 @@ pub fn read_difficult_type_table(
 /// 匹配学生信息和困难类型信息
 pub fn match_students_with_difficulty(
     students: &[Student],
-    difficult_students: &[DifficultStudent],
+    difficult_people: &[DifficultPerson],
 ) -> Vec<MatchResult> {
     let mut results = Vec::new();
 
@@ -417,11 +420,11 @@ pub fn match_students_with_difficulty(
     let student_map: HashMap<String, &Student> =
         students.iter().map(|s| (s.id_number.clone(), s)).collect();
 
-    for difficult_student in difficult_students {
-        if let Some(student) = student_map.get(&difficult_student.id_number) {
+    for difficult_person in difficult_people {
+        if let Some(student) = student_map.get(&difficult_person.id_number) {
             results.push(MatchResult {
                 student: (*student).clone(),
-                difficult_info: difficult_student.clone(),
+                difficult_info: difficult_person.clone(),
             });
         }
     }
