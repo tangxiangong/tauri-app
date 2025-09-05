@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 // 类型定义
 export interface CommandResult<T> {
@@ -29,10 +29,22 @@ export interface Student {
   school?: string;
 }
 
+export type DifficultyType =
+  | "脱贫户(继续享受政策)"
+  | "脱贫户(不享受政策)"
+  | "持证残疾人"
+  | "农村低保"
+  | "城镇低保"
+  | "城乡特困"
+  | "防返贫监测对象(风险未消除)"
+  | "防返贫监测对象(风险已消除)"
+  | "孤儿及事实无人抚养儿童"
+  | "低收入人口";
+
 export interface DifficultStudent {
   name: string;
   id_number: string;
-  difficulty_type: string;
+  difficulty_type: DifficultyType;
   source_file: string;
   extra_info: Record<string, string>;
 }
@@ -40,25 +52,6 @@ export interface DifficultStudent {
 export interface MatchResult {
   student: Student;
   difficult_info: DifficultStudent;
-}
-
-/**
- * 处理上传的学生文件和困难类型文件
- * @param studentFilePath 学生文件路径
- * @param difficultyFilePath 困难类型文件路径
- * @param difficultyType 困难类型
- * @returns 匹配结果
- */
-export async function processUploadedFiles(
-  studentFilePath: string,
-  difficultyFilePath: string,
-  difficultyType: string,
-): Promise<CommandResult<MatchResult[]>> {
-  return await invoke("process_uploaded_files", {
-    studentFilePath,
-    difficultyFilePath,
-    difficultyType,
-  });
 }
 
 /**
@@ -113,6 +106,36 @@ export async function openFileDialog(
 }
 
 /**
+ * 打开文件保存对话框
+ * @param title 对话框标题
+ * @param defaultName 默认文件名
+ * @param extensions 允许的文件扩展名
+ * @returns 选择的保存路径
+ */
+export async function saveFileDialog(
+  title: string,
+  defaultName?: string,
+  extensions: string[] = ["xlsx"],
+): Promise<string | null> {
+  try {
+    const selected = await save({
+      title,
+      defaultPath: defaultName,
+      filters: [
+        {
+          name: "Excel 文件",
+          extensions,
+        },
+      ],
+    });
+
+    return selected;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
  * 格式化文件大小
  * @param bytes 字节数
  * @returns 格式化后的文件大小字符串
@@ -142,7 +165,7 @@ export function isExcelFile(fileName: string): boolean {
  */
 export function generateMatchSummary(results: MatchResult[]): {
   totalMatches: number;
-  difficultyTypeCounts: Record<string, number>;
+  difficultyTypeCounts: Record<DifficultyType, number>;
 } {
   const difficultyTypeCounts: Record<string, number> = {};
 
@@ -153,7 +176,10 @@ export function generateMatchSummary(results: MatchResult[]): {
 
   return {
     totalMatches: results.length,
-    difficultyTypeCounts,
+    difficultyTypeCounts: difficultyTypeCounts as Record<
+      DifficultyType,
+      number
+    >,
   };
 }
 

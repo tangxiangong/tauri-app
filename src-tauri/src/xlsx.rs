@@ -1,7 +1,83 @@
 use calamine::{DataType, Reader, Xls, Xlsx, open_workbook};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
+
+/// 困难类型枚举
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DifficultyType {
+    #[serde(rename = "脱贫户(继续享受政策)")]
+    PovertyAlleviatedContinuePolicy,
+    #[serde(rename = "脱贫户(不享受政策)")]
+    PovertyAlleviatedNoPolicy,
+    #[serde(rename = "持证残疾人")]
+    DisabledWithCertificate,
+    #[serde(rename = "农村低保")]
+    RuralMinimumLiving,
+    #[serde(rename = "城镇低保")]
+    UrbanMinimumLiving,
+    #[serde(rename = "城乡特困")]
+    RuralSpecialDifficulty,
+    #[serde(rename = "防返贫监测对象(风险未消除)")]
+    AntiPovertyMonitoringRiskNotEliminated,
+    #[serde(rename = "防返贫监测对象(风险已消除)")]
+    AntiPovertyMonitoringRiskEliminated,
+    #[serde(rename = "孤儿及事实无人抚养儿童")]
+    OrphansAndFactuallyUnsupportedChildren,
+    #[serde(rename = "低收入人口")]
+    LowIncomePopulation,
+}
+
+impl std::fmt::Display for DifficultyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PovertyAlleviatedContinuePolicy => write!(f, "脱贫户(继续享受政策)"),
+            Self::PovertyAlleviatedNoPolicy => write!(f, "脱贫户(不享受政策)"),
+            Self::DisabledWithCertificate => write!(f, "持证残疾人"),
+            Self::RuralMinimumLiving => write!(f, "农村低保"),
+            Self::UrbanMinimumLiving => write!(f, "城镇低保"),
+            Self::RuralSpecialDifficulty => write!(f, "城乡特困"),
+            Self::AntiPovertyMonitoringRiskNotEliminated => write!(f, "防返贫监测对象(风险未消除)"),
+            Self::AntiPovertyMonitoringRiskEliminated => write!(f, "防返贫监测对象(风险已消除)"),
+            Self::OrphansAndFactuallyUnsupportedChildren => write!(f, "孤儿及事实无人抚养儿童"),
+            Self::LowIncomePopulation => write!(f, "低收入人口"),
+        }
+    }
+}
+
+impl DifficultyType {
+    /// 获取所有困难类型
+    pub fn all() -> Vec<Self> {
+        vec![
+            Self::PovertyAlleviatedContinuePolicy,
+            Self::PovertyAlleviatedNoPolicy,
+            Self::DisabledWithCertificate,
+            Self::RuralMinimumLiving,
+            Self::UrbanMinimumLiving,
+            Self::RuralSpecialDifficulty,
+            Self::AntiPovertyMonitoringRiskNotEliminated,
+            Self::AntiPovertyMonitoringRiskEliminated,
+            Self::OrphansAndFactuallyUnsupportedChildren,
+            Self::LowIncomePopulation,
+        ]
+    }
+
+    /// 根据困难类型获取列配置 (姓名列索引, 身份证列索引, 数据开始行, 工作表索引)
+    pub fn get_column_config(&self) -> (Option<usize>, Option<usize>, usize, usize) {
+        match self {
+            Self::PovertyAlleviatedContinuePolicy | Self::PovertyAlleviatedNoPolicy => {
+                (None, Some(7), 1, 0) // H列(索引7), 第1个工作表
+            }
+            Self::DisabledWithCertificate => (Some(0), Some(1), 1, 0), // A列姓名，B列身份证号, 第1个工作表
+            Self::RuralMinimumLiving => (Some(4), Some(6), 1, 1), // E列姓名，G列身份证号, 第2个工作表
+            Self::UrbanMinimumLiving => (None, Some(6), 1, 0),    // G列(索引6), 第1个工作表
+            Self::RuralSpecialDifficulty => (Some(0), Some(5), 1, 1), // A列姓名，F列身份证号, 第2个工作表
+            Self::AntiPovertyMonitoringRiskNotEliminated
+            | Self::AntiPovertyMonitoringRiskEliminated => (None, Some(11), 1, 0), // L列(索引11), 第1个工作表
+            Self::OrphansAndFactuallyUnsupportedChildren => (None, Some(2), 1, 0), // C列(索引2), 第1个工作表
+            Self::LowIncomePopulation => (None, Some(3), 1, 0), // D列(索引3), 第1个工作表
+        }
+    }
+}
 
 /// 学生基本信息结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,10 +94,10 @@ pub struct Student {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DifficultStudent {
     pub name: String,
-    pub id_number: String,
-    pub difficulty_type: String,             // 困难类型
+    pub id_number: String,                   // 身份证号
+    pub difficulty_type: DifficultyType,     // 困难类型
     pub source_file: String,                 // 来源文件
-    pub extra_info: HashMap<String, String>, // 其他额外信息
+    pub extra_info: HashMap<String, String>, // 其他信息
 }
 
 /// 匹配结果结构
@@ -53,20 +129,12 @@ impl std::error::Error for ExcelError {}
 
 /// 清理和标准化身份证号
 fn normalize_id_number(id: &str) -> String {
-    let cleaned = id
-        .trim()
+    id.trim()
         .replace(" ", "")
         .replace("\t", "")
         .replace("\n", "")
         .replace("\r", "")
-        .to_uppercase();
-
-    // 移除可能的 "G" 前缀
-    if cleaned.starts_with("G") && cleaned.len() == 19 {
-        cleaned[1..].to_string()
-    } else {
-        cleaned
-    }
+        .to_uppercase()
 }
 
 /// 读取学生信息表
@@ -78,21 +146,20 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::e
     let mut students = Vec::new();
 
     // 尝试读取 xlsx 格式
+    // 处理 xlsx 格式
     if file_path.ends_with(".xlsx") {
         let mut workbook: Xlsx<_> = open_workbook(file_path)?;
         let range = workbook
             .worksheet_range_at(0)
             .ok_or("Cannot find first worksheet")??;
 
-        // 假设第一行是表头，从第二行开始读取数据
         for (row_idx, row) in range.rows().enumerate() {
             if row_idx == 0 {
                 continue; // 跳过表头
             }
 
-            if row.len() >= 2 {
-                // 调试：打印原始行数据
-
+            if row.len() >= 3 {
+                // A列：学生姓名
                 let name = row
                     .first()
                     .and_then(|v| v.as_string())
@@ -100,11 +167,10 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::e
                     .trim()
                     .to_string();
 
-                // 尝试从第2列获取真实身份证号（去掉G前缀的）
+                // C列：身份证件号
                 let id_number = row
                     .get(2)
                     .and_then(|v| v.as_string())
-                    .or_else(|| row.get(1).and_then(|v| v.as_string()))
                     .unwrap_or_default()
                     .trim()
                     .to_string();
@@ -113,18 +179,22 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::e
                     let student = Student {
                         name,
                         id_number: normalize_id_number(&id_number),
+                        // B列：全国学籍号
                         student_id: row
                             .get(1)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
+                        // L列：班级
                         class: row
                             .get(11)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
+                        // K列：年级
                         grade: row
                             .get(10)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
+                        // F列：学校名称
                         school: row
                             .get(5)
                             .and_then(|v| v.as_string())
@@ -142,7 +212,7 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, Box<dyn std::e
 /// 读取困难类型表
 pub fn read_difficult_type_table(
     file_path: &str,
-    difficulty_type: &str,
+    difficulty_type: DifficultyType,
 ) -> Result<Vec<DifficultStudent>, Box<dyn std::error::Error>> {
     if !Path::new(file_path).exists() {
         return Err(Box::new(ExcelError::FileNotFound(file_path.to_string())));
@@ -155,80 +225,44 @@ pub fn read_difficult_type_table(
         .to_string_lossy()
         .to_string();
 
+    // 根据困难类型确定列位置
+    let (name_col, id_col, data_start_row, target_worksheet_index) =
+        difficulty_type.get_column_config();
+
+    // 处理 .xlsx 格式
     if file_path.ends_with(".xlsx") {
         let mut workbook: Xlsx<_> = open_workbook(file_path)?;
         let range = workbook
-            .worksheet_range_at(0)
-            .ok_or("Cannot find first worksheet")??;
+            .worksheet_range_at(target_worksheet_index)
+            .ok_or(format!(
+                "Cannot find worksheet at index {}",
+                target_worksheet_index
+            ))??;
 
-        // 读取表头以确定列位置
-        let headers: Vec<String> = if let Some(header_row) = range.rows().next() {
-            header_row
-                .iter()
-                .map(|cell| {
-                    cell.as_string()
-                        .unwrap_or_default()
-                        .trim()
-                        .to_string()
-                        .to_lowercase()
-                })
-                .collect()
-        } else {
-            return Ok(difficult_students);
-        };
-
-        // // 查找姓名和身份证号的列位置
-        // let name_col = find_column_index(&headers, &["姓名", "name", "名字"]);
-        // let id_col = find_column_index(
-        //     &headers,
-        //     &["身份证号", "身份证", "id", "idcard", "证件号", "证件号码"],
-        // );
-
-        // 找到真正的数据开始行
-        let mut data_start_row = 0;
-        let mut real_headers: Vec<String> = Vec::new();
-
-        // 扫描前几行找到真正的表头
-        for (idx, row) in range.rows().enumerate().take(5) {
-            let row_text: Vec<String> = row
-                .iter()
-                .map(|cell| cell.as_string().unwrap_or_default().trim().to_string())
-                .collect();
-
-            // 如果这行包含"姓名"或"证件号码"等关键词，认为是真正的表头
-            if row_text.iter().any(|cell| {
-                let cell_lower = cell.to_lowercase();
-                cell_lower.contains("姓名")
-                    || cell_lower.contains("证件号码")
-                    || cell_lower.contains("身份证号")
-            }) && row_text.iter().any(|cell| cell.contains("姓名"))
-                && (row_text.iter().any(|cell| cell.contains("身份证"))
-                    || row_text.iter().any(|cell| cell.contains("证件号码")))
-            {
-                real_headers = row_text;
-                data_start_row = idx + 1;
+        // 跳过可能的标题行，查找真正的数据开始行
+        let mut actual_start_row = data_start_row;
+        for (row_idx, row) in range.rows().enumerate().skip(data_start_row) {
+            for cell in row {
+                if let Some(cell_str) = cell.as_string() {
+                    let cell_str = cell_str.trim();
+                    // 如果找到数字，认为是数据开始
+                    if cell_str.len() >= 10 && cell_str.chars().any(|c| c.is_ascii_digit()) {
+                        actual_start_row = row_idx;
+                        break;
+                    }
+                }
+            }
+            if actual_start_row != data_start_row {
                 break;
             }
         }
 
-        // 如果没找到合适的表头，使用原来的逻辑
-        if real_headers.is_empty() {
-            real_headers = headers.clone();
-            data_start_row = 1;
-        }
-
-        // 重新查找姓名和身份证号的列位置
-        let name_col = find_column_index(&real_headers, &["姓名", "name", "名字"]);
-        let id_col = find_column_index(
-            &real_headers,
-            &["身份证号", "身份证", "id", "idcard", "证件号", "证件号码"],
-        );
-
         for (row_idx, row) in range.rows().enumerate() {
-            if row_idx < data_start_row {
-                continue; // 跳过表头行
+            if row_idx < actual_start_row {
+                continue; // 跳过标题行和表头
             }
 
+            // 获取姓名（如果有的话）
             let name = if let Some(col) = name_col {
                 row.get(col)
                     .and_then(|v| v.as_string())
@@ -236,14 +270,11 @@ pub fn read_difficult_type_table(
                     .trim()
                     .to_string()
             } else {
-                // 如果找不到姓名列，尝试使用第一列
-                row.first()
-                    .and_then(|v| v.as_string())
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string()
+                // 对于没有姓名列的表，使用"未知"
+                "未知".to_string()
             };
 
+            // 获取身份证号
             let id_number = if let Some(col) = id_col {
                 row.get(col)
                     .and_then(|v| v.as_string())
@@ -251,38 +282,17 @@ pub fn read_difficult_type_table(
                     .trim()
                     .to_string()
             } else {
-                // 如果找不到身份证列，尝试使用第二列
-                row.get(1)
-                    .and_then(|v| v.as_string())
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string()
+                continue; // 没有身份证号列则跳过
             };
 
-            if !name.is_empty()
-                && !id_number.is_empty()
-                && id_number.len() >= 15
-                && !name.contains("序号")
-                && !name.contains("姓名")
-            {
-                // 收集其他信息
-                let mut extra_info = HashMap::new();
-                for (col_idx, header) in headers.iter().enumerate() {
-                    if !header.is_empty()
-                        && col_idx != name_col.unwrap_or(0)
-                        && col_idx != id_col.unwrap_or(1)
-                        && let Some(cell_value) = row.get(col_idx).and_then(|v| v.as_string())
-                            && !cell_value.trim().is_empty() {
-                                extra_info.insert(header.clone(), cell_value.trim().to_string());
-                            }
-                }
-
+            // 只要身份证号不为空就添加记录
+            if !id_number.is_empty() {
                 let difficult_student = DifficultStudent {
                     name,
                     id_number: normalize_id_number(&id_number),
-                    difficulty_type: difficulty_type.to_string(),
+                    difficulty_type: difficulty_type.clone(),
                     source_file: source_file.clone(),
-                    extra_info,
+                    extra_info: HashMap::new(),
                 };
                 difficult_students.push(difficult_student);
             }
@@ -291,33 +301,14 @@ pub fn read_difficult_type_table(
         // 处理旧版 Excel 格式
         let mut workbook: Xls<_> = open_workbook(file_path)?;
         let range = workbook
-            .worksheet_range_at(0)
-            .ok_or("Cannot find first worksheet")??;
-
-        // 读取表头
-        let headers: Vec<String> = if let Some(header_row) = range.rows().next() {
-            header_row
-                .iter()
-                .map(|cell| {
-                    cell.as_string()
-                        .unwrap_or_default()
-                        .trim()
-                        .to_string()
-                        .to_lowercase()
-                })
-                .collect()
-        } else {
-            return Ok(difficult_students);
-        };
-
-        let name_col = find_column_index(&headers, &["姓名", "name", "名字"]);
-        let id_col = find_column_index(
-            &headers,
-            &["身份证号", "身份证", "id", "idcard", "证件号", "证件号码"],
-        );
+            .worksheet_range_at(target_worksheet_index)
+            .ok_or(format!(
+                "Cannot find worksheet at index {}",
+                target_worksheet_index
+            ))??;
 
         for (row_idx, row) in range.rows().enumerate() {
-            if row_idx == 0 {
+            if row_idx < data_start_row {
                 continue;
             }
 
@@ -349,29 +340,13 @@ pub fn read_difficult_type_table(
                     .to_string()
             };
 
-            if !name.is_empty()
-                && !id_number.is_empty()
-                && id_number.len() >= 15
-                && !name.contains("序号")
-                && !name.contains("姓名")
-            {
-                let mut extra_info = HashMap::new();
-                for (col_idx, header) in headers.iter().enumerate() {
-                    if !header.is_empty()
-                        && col_idx != name_col.unwrap_or(0)
-                        && col_idx != id_col.unwrap_or(1)
-                        && let Some(cell_value) = row.get(col_idx).and_then(|v| v.as_string())
-                            && !cell_value.trim().is_empty() {
-                                extra_info.insert(header.clone(), cell_value.trim().to_string());
-                            }
-                }
-
+            if !id_number.is_empty() {
                 let difficult_student = DifficultStudent {
                     name,
                     id_number: normalize_id_number(&id_number),
-                    difficulty_type: difficulty_type.to_string(),
+                    difficulty_type: difficulty_type.clone(),
                     source_file: source_file.clone(),
-                    extra_info,
+                    extra_info: HashMap::new(),
                 };
                 difficult_students.push(difficult_student);
             }
@@ -379,18 +354,6 @@ pub fn read_difficult_type_table(
     }
 
     Ok(difficult_students)
-}
-
-/// 查找列索引的辅助函数
-fn find_column_index(headers: &[String], possible_names: &[&str]) -> Option<usize> {
-    for (idx, header) in headers.iter().enumerate() {
-        for name in possible_names {
-            if header.contains(name) {
-                return Some(idx);
-            }
-        }
-    }
-    None
 }
 
 /// 匹配学生信息和困难类型信息
@@ -414,108 +377,4 @@ pub fn match_students_with_difficulty(
     }
 
     results
-}
-
-/// 处理所有困难类型表并匹配学生信息
-pub fn process_all_difficulty_types(
-    students: &[Student],
-    data_dir: &str,
-) -> Result<Vec<MatchResult>, Box<dyn std::error::Error>> {
-    let difficulty_types = vec![
-        (
-            "1-脱贫户信息_20250902-继续享受政策.xlsx",
-            "脱贫户(继续享受政策)",
-        ),
-        ("2-2025.9.3持证残疾人名单.xlsx", "持证残疾人"),
-        ("3-02025.9.1-2025年9月份农村低保备案表.xls", "农村低保"),
-        (
-            "4-2025.9.1-2025年9月份城乡特困人员备案表.xlsx",
-            "城乡特困人员",
-        ),
-        ("5-2025.9.1-2025年9月份城镇低保全部备案表.xls", "城镇低保"),
-        (
-            "6-防止返贫致贫监测对象信息_20250902-风险未消除608人.xlsx",
-            "防返贫监测对象(风险未消除)",
-        ),
-        (
-            "7-2025.9.1-2025年9月份孤儿及事实无人抚养儿童发放花名册.xls",
-            "孤儿及事实无人抚养儿童",
-        ),
-        ("8-2025.9.2-2025年9月低收入人口花名册.xlsx", "低收入人口"),
-        (
-            "9-脱贫户信息_20250902-脱贫不享受政策.xlsx",
-            "脱贫户(不享受政策)",
-        ),
-        (
-            "10-防止返贫致贫监测对象信息_20250902-风险已消除2928人.xlsx",
-            "防返贫监测对象(风险已消除)",
-        ),
-    ];
-
-    let mut all_results = Vec::new();
-
-    for (filename, difficulty_type) in difficulty_types {
-        let file_path = format!(
-            "{}/2025年秋季学期困难类型查询专用表及最新的本县户籍特殊困难群体人员信息9.3/{}",
-            data_dir, filename
-        );
-
-        match read_difficult_type_table(&file_path, difficulty_type) {
-            Ok(difficult_students) => {
-                let matches = match_students_with_difficulty(students, &difficult_students);
-                all_results.extend(matches);
-            }
-            Err(_) => {
-                // 忽略无法处理的文件
-            }
-        }
-    }
-
-    Ok(all_results)
-}
-
-/// 公开的API函数：处理学生信息匹配
-pub fn find_difficulty_students(
-    data_dir: &str,
-) -> Result<Vec<MatchResult>, Box<dyn std::error::Error>> {
-    // 读取学生信息表
-    let student_info_path = format!("{}/20250904在校生信息.xlsx", data_dir);
-    let students = read_student_info(&student_info_path)?;
-
-    // 处理所有困难类型表
-    let results = process_all_difficulty_types(&students, data_dir)?;
-
-    Ok(results)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_normalize_id_number() {
-        assert_eq!(
-            normalize_id_number("  123456789012345678  "),
-            "123456789012345678"
-        );
-        assert_eq!(
-            normalize_id_number("123\t456\n789\r012345678"),
-            "123456789012345678"
-        );
-    }
-
-    #[test]
-    fn test_find_column_index() {
-        let headers = vec![
-            "序号".to_string(),
-            "姓名".to_string(),
-            "身份证号".to_string(),
-        ];
-        assert_eq!(find_column_index(&headers, &["姓名"]), Some(1));
-        assert_eq!(
-            find_column_index(&headers, &["身份证号", "身份证"]),
-            Some(2)
-        );
-        assert_eq!(find_column_index(&headers, &["不存在的列"]), None);
-    }
 }

@@ -3023,6 +3023,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_xlsxwriter"
+version = "0.90.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fc4507df5e1c3ab599b1434c3e71ef14684d9b21cfbf1d3f1315cda74a47320"
+dependencies = [
+ "zip",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3659,6 +3668,7 @@ dependencies = [
  "calamine",
  "chrono",
  "itertools",
+ "rust_xlsxwriter",
  "serde",
  "serde_json",
  "tauri",

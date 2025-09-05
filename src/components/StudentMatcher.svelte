@@ -1,10 +1,10 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import {
-        processUploadedFiles,
         validateUploadedFile,
         getDifficultyTypeOptions,
         openFileDialog,
+        saveFileDialog,
         formatFileSize,
         maskIdNumber,
         generateMatchSummary,
@@ -12,6 +12,11 @@
         type DifficultyTypeOption,
         type MatchResult,
     } from "$lib/command/upload";
+    import {
+        executeStudentSearch,
+        exportMatchesToExcel,
+        type MatchStatistics,
+    } from "$lib/command/student-search";
 
     // 响应式状态
     let studentFile: FileInfo | null = $state(null);
@@ -19,9 +24,12 @@
     let selectedDifficultyType: string = $state("");
     let difficultyTypeOptions: DifficultyTypeOption[] = $state([]);
     let matchResults: MatchResult[] = $state([]);
+    let matchStatistics: MatchStatistics | null = $state(null);
     let isLoading: boolean = $state(false);
     let error: string = $state("");
     let success: string = $state("");
+    let hasSearched: boolean = $state(false);
+    let isExporting: boolean = $state(false);
 
     // 分页状态
     let currentPage: number = $state(1);
@@ -118,21 +126,27 @@
         success = "";
 
         try {
-            const result = await processUploadedFiles(
+            const result = await executeStudentSearch(
                 studentFile!.path,
                 difficultyFile!.path,
                 selectedDifficultyType,
             );
 
-            if (result.success && result.data) {
-                matchResults = result.data;
+            if (result.success) {
+                matchResults = result.matches;
+                matchStatistics = result.statistics;
+                hasSearched = true;
                 resetPagination();
-                setSuccess(`匹配成功！找到 ${result.data.length} 个匹配结果`);
+                setSuccess(
+                    `匹配完成！找到 ${result.matches.length} 个匹配结果`,
+                );
             } else {
                 setError("匹配失败: " + (result.error || "未知错误"));
+                hasSearched = false;
             }
         } catch (err) {
             setError("匹配失败: " + String(err));
+            hasSearched = false;
         } finally {
             isLoading = false;
         }
@@ -144,8 +158,11 @@
         difficultyFile = null;
         selectedDifficultyType = "";
         matchResults = [];
+        matchStatistics = null;
+        hasSearched = false;
         error = "";
         success = "";
+        isExporting = false;
         resetPagination();
     }
 
@@ -184,6 +201,53 @@
         success = message;
         error = "";
         setTimeout(() => (success = ""), 3000);
+    }
+
+    // 导出到 Excel
+    async function exportToExcel() {
+        if (matchResults.length === 0) {
+            setError("没有可导出的数据");
+            return;
+        }
+
+        try {
+            isExporting = true;
+
+            // 生成文件名
+            const timestamp = new Date()
+                .toISOString()
+                .slice(0, 19)
+                .replace(/:/g, "-");
+            const filename = `学生困难类型匹配结果_${selectedDifficultyType}_${timestamp}.xlsx`;
+
+            // 使用保存对话框让用户选择保存位置
+            const savePath = await saveFileDialog("保存 Excel 文件", filename, [
+                "xlsx",
+            ]);
+
+            if (!savePath) {
+                isExporting = false;
+                return;
+            }
+
+            const outputPath = savePath.endsWith(".xlsx")
+                ? savePath
+                : `${savePath}.xlsx`;
+
+            const result = await exportMatchesToExcel(matchResults, outputPath);
+
+            if (result.success) {
+                setSuccess(
+                    `成功导出 ${matchResults.length} 条记录到 Excel 文件`,
+                );
+            } else {
+                setError("导出失败: " + (result.error || "未知错误"));
+            }
+        } catch (err) {
+            setError("导出失败: " + String(err));
+        } finally {
+            isExporting = false;
+        }
     }
 </script>
 
@@ -410,14 +474,10 @@
                     {/if}
                 </button>
 
-                <button
-                    class="btn btn-outline"
-                    onclick={resetAll}
-                    disabled={isLoading}
-                >
+                <button class="btn btn-secondary" onclick={resetAll}>
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5"
+                        class="h-4 w-4"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -431,32 +491,21 @@
                     </svg>
                     重置
                 </button>
-            </div>
 
-            <!-- 匹配结果统计 -->
-            {#if matchResults.length > 0}
-                <div class="stats shadow mb-6">
-                    <div class="stat">
-                        <div class="stat-title">匹配总数</div>
-                        <div class="stat-value text-primary">
-                            {matchSummary.totalMatches}
-                        </div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-title">困难类型</div>
-                        <div class="stat-value text-secondary">
-                            {selectedDifficultyType}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 匹配结果列表 -->
-                <div class="card bg-base-200">
-                    <div class="card-body">
-                        <h3 class="card-title text-xl mb-4">
+                {#if hasSearched}
+                    <button
+                        class="btn btn-accent"
+                        onclick={exportToExcel}
+                        disabled={isExporting}
+                    >
+                        {#if isExporting}
+                            <span class="loading loading-spinner loading-sm"
+                            ></span>
+                            导出中...
+                        {:else}
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                class="h-6 w-6"
+                                class="h-4 w-4"
                                 fill="none"
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
@@ -465,131 +514,204 @@
                                     stroke-linecap="round"
                                     stroke-linejoin="round"
                                     stroke-width="2"
-                                    d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                                 />
                             </svg>
-                            匹配结果 ({matchResults.length} 人)
-                        </h3>
-
-                        <div class="overflow-x-auto">
-                            <table class="table table-zebra">
-                                <thead>
-                                    <tr>
-                                        <th>序号</th>
-                                        <th>学生姓名</th>
-                                        <th>身份证号</th>
-                                        <th>班级</th>
-                                        <th>年级</th>
-                                        <th>学校</th>
-                                        <th>困难类型</th>
-                                        <th>来源文件</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {#each paginatedResults as result, index}
-                                        <tr class="hover">
-                                            <td
-                                                >{(currentPage - 1) *
-                                                    itemsPerPage +
-                                                    index +
-                                                    1}</td
-                                            >
-                                            <td class="font-semibold"
-                                                >{result.student.name}</td
-                                            >
-                                            <td class="font-mono text-sm"
-                                                >{maskIdNumber(
-                                                    result.student.id_number,
-                                                )}</td
-                                            >
-                                            <td
-                                                >{result.student.class ||
-                                                    "未知"}</td
-                                            >
-                                            <td
-                                                >{result.student.grade ||
-                                                    "未知"}</td
-                                            >
-                                            <td
-                                                >{result.student.school ||
-                                                    "未知"}</td
-                                            >
-                                            <td>
-                                                <div
-                                                    class="badge badge-primary badge-sm"
-                                                >
-                                                    {result.difficult_info
-                                                        .difficulty_type}
-                                                </div>
-                                            </td>
-                                            <td class="text-xs opacity-70"
-                                                >{result.difficult_info
-                                                    .source_file}</td
-                                            >
-                                        </tr>
-                                    {/each}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- 分页控件 -->
-                        {#if totalPages > 1}
-                            <div class="flex justify-center mt-6">
-                                <div class="join">
-                                    <button
-                                        class="join-item btn"
-                                        onclick={prevPage}
-                                        disabled={currentPage === 1}
-                                    >
-                                        «
-                                    </button>
-
-                                    {#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
-                                        {#if totalPages <= 10 || page <= 3 || page >= totalPages - 2 || Math.abs(page - currentPage) <= 1}
-                                            <button
-                                                class="join-item btn {currentPage ===
-                                                page
-                                                    ? 'btn-active'
-                                                    : ''}"
-                                                onclick={() => goToPage(page)}
-                                            >
-                                                {page}
-                                            </button>
-                                        {:else if page === 4 && currentPage > 5}
-                                            <button
-                                                class="join-item btn btn-disabled"
-                                                >...</button
-                                            >
-                                        {:else if page === totalPages - 3 && currentPage < totalPages - 4}
-                                            <button
-                                                class="join-item btn btn-disabled"
-                                                >...</button
-                                            >
-                                        {/if}
-                                    {/each}
-
-                                    <button
-                                        class="join-item btn"
-                                        onclick={nextPage}
-                                        disabled={currentPage === totalPages}
-                                    >
-                                        »
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="text-center mt-4 text-sm opacity-70">
-                                第 {currentPage} 页，共 {totalPages} 页，显示第 {(currentPage -
-                                    1) *
-                                    itemsPerPage +
-                                    1} - {Math.min(
-                                    currentPage * itemsPerPage,
-                                    matchResults.length,
-                                )} 条，总计 {matchResults.length} 条记录
-                            </div>
+                            导出 Excel
                         {/if}
+                    </button>
+                {/if}
+            </div>
+
+            <!-- 匹配结果统计 -->
+            {#if hasSearched && matchStatistics}
+                <div class="stats shadow mb-6">
+                    <div class="stat">
+                        <div class="stat-title">匹配数量</div>
+                        <div class="stat-value text-primary">
+                            {matchStatistics.total_matches}
+                        </div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-title">困难类型</div>
+                        <div class="stat-value text-secondary text-sm">
+                            {selectedDifficultyType}
+                        </div>
                     </div>
                 </div>
+
+                {#if matchResults.length === 0}
+                    <!-- 无匹配结果提示 -->
+                    <div class="card bg-base-200">
+                        <div class="card-body text-center py-12">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-16 w-16 mx-auto text-base-content/30 mb-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                            </svg>
+                            <h3
+                                class="text-xl font-semibold text-base-content/70 mb-2"
+                            >
+                                未找到匹配结果
+                            </h3>
+                            <p class="text-base-content/50">
+                                没有找到符合 "{selectedDifficultyType}"
+                                困难类型的学生
+                            </p>
+                            <p class="text-base-content/40 text-sm mt-2">
+                                请检查困难类型数据表是否包含相关学生信息，或尝试其他困难类型
+                            </p>
+                        </div>
+                    </div>
+                {:else}
+                    <!-- 匹配结果列表 -->
+                    <div class="card bg-base-200">
+                        <div class="card-body">
+                            <h3 class="card-title text-xl mb-4">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-6 w-6"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                                    />
+                                </svg>
+                                匹配结果 ({matchResults.length} 人)
+                            </h3>
+
+                            <div class="overflow-x-auto">
+                                <table class="table table-zebra">
+                                    <thead>
+                                        <tr>
+                                            <th>序号</th>
+                                            <th>学生姓名</th>
+                                            <th>身份证号</th>
+                                            <th>班级</th>
+                                            <th>年级</th>
+                                            <th>学校</th>
+                                            <th>困难类型</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each paginatedResults as result, index}
+                                            <tr class="hover">
+                                                <td
+                                                    >{(currentPage - 1) *
+                                                        itemsPerPage +
+                                                        index +
+                                                        1}</td
+                                                >
+                                                <td class="font-semibold"
+                                                    >{result.student.name}</td
+                                                >
+                                                <td class="font-mono text-sm"
+                                                    >{maskIdNumber(
+                                                        result.student
+                                                            .id_number,
+                                                    )}</td
+                                                >
+                                                <td
+                                                    >{result.student.class ||
+                                                        "未知"}</td
+                                                >
+                                                <td
+                                                    >{result.student.grade ||
+                                                        "未知"}</td
+                                                >
+                                                <td
+                                                    >{result.student.school ||
+                                                        "未知"}</td
+                                                >
+                                                <td>
+                                                    <div
+                                                        class="badge badge-primary badge-sm"
+                                                    >
+                                                        {result.difficult_info
+                                                            .difficulty_type}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- 分页控件 -->
+                            {#if totalPages > 1}
+                                <div class="flex justify-center mt-6">
+                                    <div class="join">
+                                        <button
+                                            class="join-item btn"
+                                            onclick={prevPage}
+                                            disabled={currentPage === 1}
+                                        >
+                                            «
+                                        </button>
+
+                                        {#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
+                                            {#if totalPages <= 10 || page <= 3 || page >= totalPages - 2 || Math.abs(page - currentPage) <= 1}
+                                                <button
+                                                    class="join-item btn {currentPage ===
+                                                    page
+                                                        ? 'btn-active'
+                                                        : ''}"
+                                                    onclick={() =>
+                                                        goToPage(page)}
+                                                >
+                                                    {page}
+                                                </button>
+                                            {:else if page === 4 && currentPage > 5}
+                                                <button
+                                                    class="join-item btn btn-disabled"
+                                                    >...</button
+                                                >
+                                            {:else if page === totalPages - 3 && currentPage < totalPages - 4}
+                                                <button
+                                                    class="join-item btn btn-disabled"
+                                                    >...</button
+                                                >
+                                            {/if}
+                                        {/each}
+
+                                        <button
+                                            class="join-item btn"
+                                            onclick={nextPage}
+                                            disabled={currentPage ===
+                                                totalPages}
+                                        >
+                                            »
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="text-center mt-4 text-sm opacity-70"
+                                >
+                                    第 {currentPage} 页，共 {totalPages} 页，显示第
+                                    {(currentPage - 1) * itemsPerPage + 1} - {Math.min(
+                                        currentPage * itemsPerPage,
+                                        matchResults.length,
+                                    )} 条，总计 {matchResults.length} 条记录
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                {/if}
             {/if}
         </div>
     </div>
