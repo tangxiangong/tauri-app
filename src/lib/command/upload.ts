@@ -42,11 +42,8 @@ export type DifficultyType =
   | "低收入人口";
 
 export interface DifficultStudent {
-  name: string;
   id_number: string;
   difficulty_type: DifficultyType;
-  source_file: string;
-  extra_info: Record<string, string>;
 }
 
 export interface MatchResult {

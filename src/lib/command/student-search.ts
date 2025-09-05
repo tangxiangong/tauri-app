@@ -226,37 +226,6 @@ export function searchInMatches(
 }
 
 /**
- * 导出匹配结果为 CSV 格式的字符串
- * @param matches 匹配结果数组
- * @returns CSV 格式的字符串
- */
-export function exportMatchesToCSV(matches: MatchResult[]): string {
-  const headers = [
-    "姓名",
-    "身份证号",
-    "学号",
-    "班级",
-    "年级",
-    "学校",
-    "困难类型",
-    "来源文件",
-  ];
-
-  const rows = matches.map((match) => [
-    match.student.name,
-    match.student.id_number,
-    match.student.student_id || "",
-    match.student.class || "",
-    match.student.grade || "",
-    match.student.school || "",
-    match.difficult_info.difficulty_type,
-    match.difficult_info.source_file,
-  ]);
-
-  return [headers, ...rows].map((row) => row.join(",")).join("\n");
-}
-
-/**
  * 验证查找参数
  * @param studentFilePath 学生文件路径
  * @param difficultyFilePath 困难类型文件路径

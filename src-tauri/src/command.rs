@@ -100,7 +100,7 @@ pub async fn get_students_match_statistics(
 
             for match_result in &matches {
                 *difficulty_type_counts
-                    .entry(match_result.difficult_info.difficulty_type.clone())
+                    .entry(match_result.difficult_info.difficulty_type)
                     .or_insert(0) += 1;
             }
 
