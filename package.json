@@ -14,18 +14,18 @@
   "license": "MIT",
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
-    "@tauri-apps/plugin-dialog": "~2.4.0"
+    "@tauri-apps/plugin-dialog": "^2.4.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.9",
     "@sveltejs/kit": "^2.37.0",
     "@sveltejs/vite-plugin-svelte": "^5.1.1",
-    "@tailwindcss/vite": "^4.1.12",
-    "daisyui": "^5.1.6",
-    "svelte": "^5.38.6",
+    "@tailwindcss/vite": "^4.1.13",
+    "daisyui": "^5.1.7",
+    "svelte": "^5.38.7",
     "svelte-check": "^4.3.1",
-    "tailwindcss": "^4.1.12",
-    "typescript": "^5.6.3",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
     "vite": "^6.3.5",
     "@tauri-apps/cli": "^2.8.4"
   }
