@@ -131,16 +131,16 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
 
     let mut students = Vec::new();
 
-    if file_path.ends_with(".xlsx") {
-        let mut workbook: Xlsx<_> = open_workbook(file_path)
-            .map_err(|e: XlsxError| ExcelError::ReadError(e.to_string()))?;
+    if file_path.ends_with(".xls") {
+        let mut workbook: Xls<_> =
+            open_workbook(file_path).map_err(|e: XlsError| ExcelError::ReadError(e.to_string()))?;
         let range = workbook
             .worksheet_range_at(0)
             .ok_or(ExcelError::ReadError("NO DATA".into()))?
             .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
         for (row_idx, row) in range.rows().enumerate() {
-            if row_idx == 0 {
+            if row_idx <= 7 {
                 continue; // 跳过表头
             }
 
@@ -153,8 +153,8 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                     .trim()
                     .to_string();
 
-                // C列：身份证件号
-                let id_value = row.get(2);
+                // D列：身份证件号
+                let id_value = row.get(3);
                 let id_number = id_value
                     .and_then(|v| v.as_string())
                     .unwrap_or_default()
@@ -171,19 +171,19 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                             .get(1)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
-                        // L列：班级
+                        // J列：班级
                         class: row
-                            .get(11)
+                            .get(9)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
-                        // K列：年级
+                        // I列：年级
                         grade: row
-                            .get(10)
+                            .get(8)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
-                        // F列：学校名称
+                        // K列：学校名称
                         school: row
-                            .get(5)
+                            .get(10)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
                     };
@@ -191,6 +191,68 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                 }
             }
         }
+    } else if file_path.ends_with(".xlsx") {
+        let mut workbook: Xlsx<_> = open_workbook(file_path)
+            .map_err(|e: XlsxError| ExcelError::ReadError(e.to_string()))?;
+        let range = workbook
+            .worksheet_range_at(0)
+            .ok_or(ExcelError::ReadError("NO DATA".into()))?
+            .map_err(|e| ExcelError::ReadError(e.to_string()))?;
+
+        for (row_idx, row) in range.rows().enumerate() {
+            if row_idx <= 7 {
+                continue; // 跳过表头
+            }
+
+            if row.len() >= 3 {
+                // A列：学生姓名
+                let name = row
+                    .first()
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                // D列：身份证件号
+                let id_value = row.get(3);
+                let id_number = id_value
+                    .and_then(|v| v.as_string())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+
+                if !name.is_empty() && !id_number.is_empty() {
+                    let normalized_id = normalize_id_number(&id_number);
+                    let student = Student {
+                        name: name.clone(),
+                        id_number: normalized_id.clone(),
+                        // B列：全国学籍号
+                        student_id: row
+                            .get(1)
+                            .and_then(|v| v.as_string())
+                            .map(|s| s.trim().to_string()),
+                        // J列：班级
+                        class: row
+                            .get(9)
+                            .and_then(|v| v.as_string())
+                            .map(|s| s.trim().to_string()),
+                        // I列：年级
+                        grade: row
+                            .get(8)
+                            .and_then(|v| v.as_string())
+                            .map(|s| s.trim().to_string()),
+                        // K列：学校名称
+                        school: row
+                            .get(10)
+                            .and_then(|v| v.as_string())
+                            .map(|s| s.trim().to_string()),
+                    };
+                    students.push(student);
+                }
+            }
+        }
+    } else {
+        return Err(ExcelError::ReadError("NO DATA".to_string()));
     }
     Ok(students)
 }
