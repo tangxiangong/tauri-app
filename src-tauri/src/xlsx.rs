@@ -140,7 +140,7 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
             .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
         for (row_idx, row) in range.rows().enumerate() {
-            if row_idx <= 7 {
+            if row_idx == 0 {
                 continue; // 跳过表头
             }
 
@@ -153,8 +153,8 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                     .trim()
                     .to_string();
 
-                // D列：身份证件号
-                let id_value = row.get(3);
+                // B列：身份证件号
+                let id_value = row.get(1);
                 let id_number = id_value
                     .and_then(|v| v.as_string())
                     .unwrap_or_default()
@@ -166,9 +166,9 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                     let student = Student {
                         name: name.clone(),
                         id_number: normalized_id.clone(),
-                        // B列：全国学籍号
+                        // K列：全国学籍号
                         student_id: row
-                            .get(1)
+                            .get(10)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
                         // J列：班级
@@ -181,9 +181,9 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                             .get(8)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
-                        // K列：学校名称
+                        // E列：学校名称
                         school: row
-                            .get(10)
+                            .get(4)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
                     };
@@ -200,7 +200,7 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
             .map_err(|e| ExcelError::ReadError(e.to_string()))?;
 
         for (row_idx, row) in range.rows().enumerate() {
-            if row_idx <= 7 {
+            if row_idx == 0 {
                 continue; // 跳过表头
             }
 
@@ -213,8 +213,8 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                     .trim()
                     .to_string();
 
-                // D列：身份证件号
-                let id_value = row.get(3);
+                // B列：身份证件号
+                let id_value = row.get(1);
                 let id_number = id_value
                     .and_then(|v| v.as_string())
                     .unwrap_or_default()
@@ -226,9 +226,9 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                     let student = Student {
                         name: name.clone(),
                         id_number: normalized_id.clone(),
-                        // B列：全国学籍号
+                        // K列：全国学籍号
                         student_id: row
-                            .get(1)
+                            .get(10)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
                         // J列：班级
@@ -241,9 +241,9 @@ pub fn read_student_info(file_path: &str) -> Result<Vec<Student>, ExcelError> {
                             .get(8)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
-                        // K列：学校名称
+                        // E列：学校名称
                         school: row
-                            .get(10)
+                            .get(4)
                             .and_then(|v| v.as_string())
                             .map(|s| s.trim().to_string()),
                     };
